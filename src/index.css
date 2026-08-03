@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #028090;
+  --color-secondary: #00A896;
+  --color-accent: #02C39A;
+  --color-dark: #042A2B;
+  --color-offwhite: #F4FAF9;
+  --color-ink: #0B2B2C;
+  --color-muted: #5B7A78;
+  
+  --font-serif: Cambria, Georgia, serif;
+  --font-sans: Inter, Calibri, system-ui, sans-serif;
+}
+
+body {
+  background-color: var(--color-offwhite);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-serif);
+}
