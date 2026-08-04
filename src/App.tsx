@@ -19,6 +19,7 @@ import { useEffect, useState } from 'react';
 import { useApi } from './context/ApiContext';
 import { Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { Analytics } from '@vercel/analytics/react';
 
 function DashboardRouter() {
   const { user } = useAuth();
@@ -144,6 +145,7 @@ export default function App() {
                 <Footer />
               </div>
             </div>
+            <Analytics />
           </Router>
         </ToastProvider>
       </ThemeProvider>
