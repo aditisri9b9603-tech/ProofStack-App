@@ -24,6 +24,8 @@ export function Chatbot() {
   const isPlayingRef = useRef(false);
   const nextStartTimeRef = useRef(0);
 
+  const [tokensRemaining, setTokensRemaining] = useState<number | null>(null);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -41,13 +43,20 @@ export function Chatbot() {
     setIsLoading(true);
     
     try {
-      const result = await fetchApi('/chat', {
+      const result = await fetchApi('/api/chat', {
         method: 'POST',
         body: JSON.stringify({ message: input, history: messages })
       });
-      setMessages([...newMessages, { role: 'model', text: result.reply }]);
-    } catch (e) {
-      showToast('Failed to send message', 'error');
+      if (result.error) {
+        setMessages([...newMessages, { role: 'model', text: `Error: ${result.error}` }]);
+      } else {
+        setMessages([...newMessages, { role: 'model', text: result.reply }]);
+        setTokensRemaining(result.tokensRemaining);
+      }
+    } catch (e: any) {
+      const errorMsg = e.message || 'Failed to send message';
+      showToast(errorMsg, 'error');
+      setMessages([...newMessages, { role: 'model', text: `System: ${errorMsg}` }]);
     } finally {
       setIsLoading(false);
     }
@@ -163,32 +172,67 @@ export function Chatbot() {
     <>
       {/* Floating Action Button */}
       <motion.button
-        className="fixed bottom-6 right-6 p-4 bg-primary text-white rounded-full shadow-lg hover:shadow-xl transition-all z-40"
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
+        className="fixed bottom-6 right-6 w-14 h-14 bg-gradient-to-tr from-primary to-accent text-white rounded-full shadow-[0_10px_30px_rgba(2,195,154,0.4)] transition-all z-40 border-2 border-white/40 flex items-center justify-center overflow-hidden"
+        animate={{ 
+          y: [0, -15, 0],
+          x: [0, -5, 5, 0],
+          rotate: [-5, 5, -5],
+          boxShadow: [
+            "0px 10px 30px rgba(2,195,154,0.4)",
+            "0px 25px 50px rgba(2,195,154,0.6)",
+            "0px 10px 30px rgba(2,195,154,0.4)"
+          ]
+        }}
+        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+        whileHover={{ scale: 1.15, rotate: 0 }}
+        whileTap={{ scale: 0.85 }}
         onClick={() => setIsOpen(!isOpen)}
       >
-        {isOpen ? <X size={24} /> : <MessageSquare size={24} />}
+        <AnimatePresence mode="wait">
+          {isOpen ? (
+            <motion.div key="close" initial={{ opacity: 0, rotate: -90 }} animate={{ opacity: 1, rotate: 0 }} exit={{ opacity: 0, rotate: 90 }}>
+              <X size={24} />
+            </motion.div>
+          ) : (
+            <motion.div key="bot" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} className="flex items-center justify-center">
+              <Bot size={28} className="animate-pulse" />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.button>
 
       {/* Chat Window */}
       <AnimatePresence>
         {isOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
-            className="fixed bottom-24 right-6 w-[350px] h-[500px] bg-white rounded-2xl shadow-2xl border border-primary/20 flex flex-col overflow-hidden z-40"
-          >
+            <motion.div
+              initial={{ opacity: 0, y: 50, scale: 0.8, rotateX: 10 }}
+              animate={{ opacity: 1, y: 0, scale: 1, rotateX: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20, transition: { duration: 0.2 } }}
+              transition={{ type: "spring", damping: 20, stiffness: 300 }}
+              className="fixed bottom-28 right-6 w-[360px] h-[540px] bg-white/70 backdrop-blur-3xl rounded-3xl shadow-[0_30px_60px_rgba(2,195,154,0.2)] border border-white/60 flex flex-col overflow-hidden z-40 transform-gpu"
+            >
             {/* Header */}
-            <div className="bg-primary p-4 flex justify-between items-center text-white">
-              <div className="flex items-center gap-2">
-                <Bot size={20} />
-                <span className="font-bold font-serif">ProofStack AI</span>
+            <div className="bg-primary/90 backdrop-blur-md p-4 flex justify-between items-center text-white border-b border-white/20">
+              <div className="flex items-center gap-3">
+                <motion.div
+                  animate={{ y: [-2, 2, -2], rotate: [-2, 2, -2] }}
+                  transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                  className="bg-white/20 p-2 rounded-full shadow-inner"
+                >
+                  <Bot size={24} className="text-white" />
+                </motion.div>
+                <div className="flex flex-col">
+                  <span className="font-bold font-serif text-md tracking-tight">ProofStack Core</span>
+                  {tokensRemaining !== null && (
+                    <span className="text-[10px] uppercase tracking-wider opacity-80 font-bold">
+                      {tokensRemaining} Tokens
+                    </span>
+                  )}
+                </div>
               </div>
               <button 
                 onClick={toggleLiveAPI} 
-                className={`p-2 rounded-full transition-colors ${isLiveActive ? 'bg-red-500 hover:bg-red-600' : 'bg-white/20 hover:bg-white/30'}`}
+                className={`p-2 rounded-full transition-colors backdrop-blur-sm ${isLiveActive ? 'bg-red-500 hover:bg-red-600' : 'bg-white/20 hover:bg-white/30 border border-white/10'}`}
                 title={isLiveActive ? "Stop Voice Chat" : "Start Voice Chat"}
               >
                 {isLiveActive ? <MicOff size={16} /> : <Mic size={16} />}
@@ -196,7 +240,7 @@ export function Chatbot() {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-offwhite/50">
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-offwhite/30">
               {messages.length === 0 && (
                 <div className="text-center text-muted mt-10 text-sm">
                   Hi! I'm your AI assistant. How can I help you today?
@@ -204,14 +248,18 @@ export function Chatbot() {
               )}
               {messages.map((m, i) => (
                 <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[80%] p-3 rounded-2xl ${m.role === 'user' ? 'bg-primary text-white rounded-tr-sm' : 'bg-white border border-primary/10 text-dark rounded-tl-sm'}`}>
-                    <p className="text-sm whitespace-pre-wrap">{m.text}</p>
-                  </div>
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    className={`max-w-[80%] p-3 rounded-2xl backdrop-blur-md shadow-sm ${m.role === 'user' ? 'bg-primary/90 text-white rounded-tr-sm border border-primary/20' : 'bg-white/90 border border-white/50 text-dark rounded-tl-sm'}`}
+                  >
+                    <p className="text-sm whitespace-pre-wrap leading-relaxed">{m.text}</p>
+                  </motion.div>
                 </div>
               ))}
               {isLoading && (
                 <div className="flex justify-start">
-                  <div className="bg-white border border-primary/10 text-muted p-3 rounded-2xl rounded-tl-sm flex gap-1">
+                  <div className="bg-white/90 backdrop-blur-md border border-white/50 text-muted p-3 rounded-2xl rounded-tl-sm flex gap-1 shadow-sm">
                     <span className="animate-bounce">●</span>
                     <span className="animate-bounce delay-100">●</span>
                     <span className="animate-bounce delay-200">●</span>
@@ -222,19 +270,19 @@ export function Chatbot() {
             </div>
 
             {/* Input */}
-            <div className="p-3 bg-white border-t border-primary/10 flex gap-2">
+            <div className="p-3 bg-white/60 backdrop-blur-md border-t border-white/40 flex gap-2">
               <input
                 type="text"
                 placeholder="Ask me anything..."
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSend()}
-                className="flex-1 px-3 py-2 bg-offwhite border border-primary/20 rounded-full text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                className="flex-1 px-4 py-2 bg-white/70 backdrop-blur-sm border border-white/60 shadow-inner rounded-full text-sm focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-muted/70"
               />
               <button
                 onClick={handleSend}
                 disabled={!input.trim() || isLoading}
-                className="p-2 bg-primary text-white rounded-full disabled:opacity-50 hover:bg-primary-dark transition-colors"
+                className="p-2.5 bg-primary/90 backdrop-blur-sm text-white rounded-full disabled:opacity-50 hover:bg-primary hover:shadow-lg transition-all"
               >
                 <Send size={16} />
               </button>

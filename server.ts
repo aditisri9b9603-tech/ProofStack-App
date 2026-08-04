@@ -4,7 +4,7 @@ import { createServer as createViteServer } from 'vite';
 import { requireAuth, AuthRequest } from './src/middleware/auth.ts';
 import { getOrCreateUser } from './src/db/users.ts';
 import { db } from './src/lib/firebase-admin.ts';
-import { doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, orderBy } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
 import { GoogleGenAI, Type, Schema, LiveServerMessage, Modality } from '@google/genai';
 import { WebSocketServer } from 'ws';
 
@@ -95,6 +95,21 @@ async function startServer() {
       res.json({ id: user.id, ...profileData });
     } catch (error) {
       res.status(500).json({ error: "Failed to update profile" });
+    }
+  });
+
+  app.post('/api/profile/theme', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+      const user = await getOrCreateUser(req.user.uid, req.user.email || '');
+      const { theme } = req.body;
+      
+      const profileRef = doc(db, 'profiles', user.id);
+      await setDoc(profileRef, { theme }, { merge: true });
+      
+      res.json({ success: true, theme });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update theme" });
     }
   });
 
@@ -207,6 +222,29 @@ async function startServer() {
 
   app.post('/api/chat', requireAuth, async (req: AuthRequest, res) => {
     try {
+      if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+      const user = await getOrCreateUser(req.user.uid, req.user.email || '');
+      
+      const profileRef = doc(db, 'profiles', user.id);
+      const profileSnap = await getDoc(profileRef);
+      
+      let tokens = 20; // Default daily limit
+      const today = new Date().toISOString().split('T')[0];
+      
+      if (profileSnap.exists()) {
+        const data = profileSnap.data();
+        if (data.lastTokenReset === today) {
+          tokens = data.tokens !== undefined ? data.tokens : 20;
+        } else {
+          // Reset for a new day
+          tokens = 20;
+        }
+      }
+
+      if (tokens <= 0) {
+        return res.status(403).json({ error: "Daily AI token limit reached. Please try again tomorrow." });
+      }
+
       const { message, history } = req.body;
       
       // We will use low latency flash-lite as required by the user prompt
@@ -237,7 +275,11 @@ async function startServer() {
         }
       }
 
-      res.json({ reply: fullOutput });
+      // Deduct token
+      tokens -= 1;
+      await setDoc(profileRef, { tokens, lastTokenReset: today }, { merge: true });
+
+      res.json({ reply: fullOutput, tokensRemaining: tokens });
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Chat failed" });
@@ -270,19 +312,110 @@ async function startServer() {
     }
   });
 
+  app.get('/api/leaderboard', async (req, res) => {
+    try {
+      const { category } = req.query;
+      
+      // Order by percentile score, limit high to ensure we get enough after in-memory filtering
+      const scoresQuery = query(collection(db, 'skillScores'), orderBy('percentileScore', 'desc'), limit(500));
+      const scoresSnap = await getDocs(scoresQuery);
+      
+      if (scoresSnap.empty) {
+        // Return mock data if db is completely empty
+        const mockLeaderboard = [
+          { userId: '1', fullName: 'Alice Johnson', collegeName: 'Stanford', topSkill: 'React', percentileScore: 99 },
+          { userId: '2', fullName: 'Bob Smith', collegeName: 'MIT', topSkill: 'Node.js', percentileScore: 96 },
+          { userId: '3', fullName: 'Charlie Davis', collegeName: 'Berkeley', topSkill: 'Python', percentileScore: 92 },
+          { userId: '4', fullName: 'Diana Evans', collegeName: 'CMU', topSkill: 'Machine Learning', percentileScore: 88 }
+        ];
+        return res.json({ leaderboard: mockLeaderboard.filter(m => category === 'All' || m.topSkill === category) });
+      }
+
+      const leaderboard: any[] = [];
+      const seenUsers = new Set();
+      
+      for (const d of scoresSnap.docs) {
+        const score = { id: d.id, ...d.data() } as any;
+        
+        // In-memory filter for category
+        if (category && category !== 'All' && score.competency !== category) {
+          continue;
+        }
+        
+        if (!seenUsers.has(score.userId)) {
+          seenUsers.add(score.userId);
+          
+          const profileRef = doc(db, 'profiles', score.userId);
+          const profileSnap = await getDoc(profileRef);
+          const profile = profileSnap.exists() ? profileSnap.data() : { fullName: 'Anonymous Student' };
+          
+          leaderboard.push({
+            userId: score.userId,
+            fullName: profile.fullName || 'Anonymous',
+            collegeName: profile.collegeName || '',
+            topSkill: score.competency,
+            percentileScore: score.percentileScore
+          });
+          
+          if (leaderboard.length >= 20) break; // top 20 limit
+        }
+      }
+      
+      res.json({ leaderboard });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to fetch leaderboard" });
+    }
+  });
+
   app.get('/api/student/dashboard', requireAuth, async (req: AuthRequest, res) => {
     try {
       if (!req.user) return res.status(401).json({ error: "Unauthorized" });
       const user = await getOrCreateUser(req.user.uid, req.user.email || '');
       
       const subsSnapshot = await getDocs(query(collection(db, 'submissions'), where('studentId', '==', user.id)));
-      const userSubmissions = subsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      let userSubmissions = subsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      
+      // Auto-seed mock data for demonstration if empty
+      if (userSubmissions.length === 0) {
+        const mockSubs = [
+          { title: "React Dashboard", url: "https://github.com/test/react-dash", comp: "React", score: 85, desc: "A robust dashboard built with React and Tailwind." },
+          { title: "Node JS API", url: "https://github.com/test/node-api", comp: "Node.js", score: 92, desc: "A fast REST API with Express." },
+          { title: "Python Data Scraper", url: "https://github.com/test/py-scraper", comp: "Python", score: 78, desc: "Web scraping script using BeautifulSoup." }
+        ];
+
+        for (const s of mockSubs) {
+          const subRef = doc(collection(db, 'submissions'));
+          await setDoc(subRef, {
+            studentId: user.id,
+            repoUrl: s.url,
+            title: s.title,
+            description: s.desc,
+            status: 'analyzed',
+            createdAt: new Date()
+          });
+
+          const scoreRef = doc(collection(db, 'skillScores'));
+          await setDoc(scoreRef, {
+            submissionId: subRef.id,
+            userId: user.id,
+            competency: s.comp,
+            percentileScore: s.score,
+            authenticityScore: 95,
+            summaryText: `Excellent work on ${s.title} demonstrating strong skills.`,
+            createdAt: new Date()
+          });
+        }
+        
+        // Re-fetch after seeding
+        const newSubsSnapshot = await getDocs(query(collection(db, 'submissions'), where('studentId', '==', user.id)));
+        userSubmissions = newSubsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      }
       
       const submissionIds = userSubmissions.map(s => s.id);
       
       let scores: any[] = [];
       if (submissionIds.length > 0) {
-         // Query batches of 10 if necessary, but here we'll just fetch all and filter for simplicity
          const scoresSnapshot = await getDocs(collection(db, 'skillScores'));
          scores = scoresSnapshot.docs
             .map(d => ({ id: d.id, ...d.data() }))
@@ -290,7 +423,17 @@ async function startServer() {
       }
       
       const challengesSnapshot = await getDocs(query(collection(db, 'challenges'), orderBy('createdAt', 'desc')));
-      const allChallenges = challengesSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      let allChallenges: any[] = challengesSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      
+      if (allChallenges.length === 0) {
+        const mockChalRef = doc(collection(db, 'challenges'));
+        await setDoc(mockChalRef, {
+           title: "Optimize Sorting Algorithm",
+           skillTag: "Algorithms",
+           createdAt: new Date()
+        });
+        allChallenges = [{ id: mockChalRef.id, title: "Optimize Sorting Algorithm", skillTag: "Algorithms", createdAt: new Date() }];
+      }
       
       res.json({
         submissions: userSubmissions,
@@ -337,6 +480,37 @@ async function startServer() {
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Failed to load dashboard" });
+    }
+  });
+
+  app.post('/api/submissions/:id/endorse', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+      const user = await getOrCreateUser(req.user.uid, req.user.email || '');
+      const submissionId = req.params.id;
+      
+      const submissionRef = doc(db, 'submissions', submissionId);
+      const submissionSnap = await getDoc(submissionRef);
+      
+      if (!submissionSnap.exists()) {
+        return res.status(404).json({ error: "Submission not found" });
+      }
+      
+      const submissionData = submissionSnap.data();
+      let endorsements = submissionData.endorsements || [];
+      
+      if (endorsements.includes(user.id)) {
+        endorsements = endorsements.filter((id: string) => id !== user.id);
+      } else {
+        endorsements.push(user.id);
+      }
+      
+      await setDoc(submissionRef, { endorsements }, { merge: true });
+      
+      res.json({ success: true, endorsements });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to endorse submission" });
     }
   });
 

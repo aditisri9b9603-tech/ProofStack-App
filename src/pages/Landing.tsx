@@ -2,6 +2,7 @@ import { ShieldCheck, Code, Trophy, Share2, ArrowRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../context/ToastContext';
+import { motion } from 'motion/react';
 
 export function Landing() {
   const { signInWithGoogle, user } = useAuth();
@@ -29,34 +30,55 @@ export function Landing() {
   };
 
   return (
-    <div className="flex flex-col flex-1">
+    <div className="flex flex-col flex-1 relative z-10">
       {/* Hero Section */}
-      <section className="pt-24 pb-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full text-center">
-        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider mb-8">
+      <section className="pt-24 pb-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full text-center relative">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 backdrop-blur-md text-primary text-xs font-bold uppercase tracking-wider mb-8 shadow-sm border border-primary/20"
+        >
           <ShieldCheck size={16} />
           <span>The new standard for verified talent</span>
-        </div>
-        <h1 className="text-5xl md:text-7xl font-serif font-bold text-dark max-w-4xl mx-auto leading-tight mb-6">
-          AI-Verified Skill Portfolios for a Placement-Ready India
-        </h1>
-        <p className="text-lg text-muted max-w-2xl mx-auto mb-10 leading-relaxed">
-          Stop relying on static resumes. Connect your GitHub, let AI verify your real coding abilities, and stand out to top recruiters with cryptographically-backed skill cards.
-        </p>
+        </motion.div>
         
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+        <motion.h1 
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, delay: 0.1 }}
+          className="text-5xl md:text-7xl font-serif font-bold text-dark max-w-4xl mx-auto leading-tight mb-6 drop-shadow-sm"
+        >
+          AI-Verified Skill Portfolios for a Placement-Ready India
+        </motion.h1>
+        <motion.p 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, delay: 0.2 }}
+          className="text-lg text-muted max-w-2xl mx-auto mb-10 leading-relaxed font-medium bg-white/30 backdrop-blur-sm p-4 rounded-2xl border border-white/50"
+        >
+          Stop relying on static resumes. Connect your GitHub, let AI verify your real coding abilities, and stand out to top recruiters with cryptographically-backed skill cards.
+        </motion.p>
+        
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.8, delay: 0.3 }}
+          className="flex flex-col sm:flex-row items-center justify-center gap-4"
+        >
           <button 
             onClick={handleAuth}
-            className="w-full sm:w-auto px-8 py-4 rounded-[12px] bg-primary text-white font-bold text-lg shadow-[0_8px_24px_rgba(2,128,144,0.3)] hover:shadow-[0_12px_32px_rgba(2,128,144,0.4)] hover:-translate-y-1 hover:bg-[#00A896] transition-all flex items-center justify-center gap-2"
+            className="w-full sm:w-auto px-8 py-4 rounded-[12px] bg-primary text-white font-bold text-lg shadow-[0_8px_24px_rgba(2,128,144,0.3)] hover:shadow-[0_12px_32px_rgba(2,128,144,0.4)] hover:-translate-y-1 hover:bg-[#00A896] transition-all flex items-center justify-center gap-2 backdrop-blur-md"
           >
             Student Sign Up <ArrowRight size={20} />
           </button>
           <button 
-            onClick={handleAuth}
-            className="w-full sm:w-auto px-8 py-4 rounded-[12px] bg-white border-2 border-primary/20 text-dark font-bold text-lg hover:bg-offwhite transition-all"
+            onClick={() => navigate('/leaderboard')}
+            className="w-full sm:w-auto px-8 py-4 rounded-[12px] bg-white/70 backdrop-blur-md border-2 border-primary/20 text-dark font-bold text-lg hover:bg-white transition-all shadow-sm"
           >
-            Recruiter Login
+            View Leaderboard
           </button>
-        </div>
+        </motion.div>
       </section>
 
       {/* Stats/Trust Section */}

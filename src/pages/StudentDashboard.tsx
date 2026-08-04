@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useApi } from '../context/ApiContext';
 import { VerifiedSkillCard } from '../components/VerifiedSkillCard';
 import { SubmitProjectModal } from '../components/SubmitProjectModal';
-import { Plus, GraduationCap, Building2, Trophy, ArrowRight } from 'lucide-react';
+import { Plus, GraduationCap, Building2, Trophy, ArrowRight, Code2, X } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
+import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
 
 export function StudentDashboard({ profile }: { profile: any }) {
   const { fetchApi } = useApi();
@@ -33,6 +34,12 @@ export function StudentDashboard({ profile }: { profile: any }) {
         submissions: [newResult.submission, ...data.submissions],
         scores: [newResult.score, ...data.scores]
       });
+
+      if (newResult.score && newResult.score.percentileScore >= 80) {
+        showToast(`Skill Level-Up! You hit the ${newResult.score.percentileScore}th percentile in ${newResult.score.competency}!`, 'success');
+      } else {
+        showToast('Project verified successfully!', 'success');
+      }
     }
   };
 
@@ -102,12 +109,20 @@ export function StudentDashboard({ profile }: { profile: any }) {
               <h1 className="font-serif text-3xl font-bold text-dark mb-1">Verification Center</h1>
               <p className="text-muted">AI-audited portfolios and real-world skill telemetry.</p>
             </div>
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="flex items-center gap-2 bg-gradient-to-r from-primary to-primary-dark text-white px-6 py-2.5 rounded-[12px] font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all"
-            >
-              <span className="text-lg leading-none mb-0.5">+</span> Submit New Project
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setIsPreviewModalOpen(true)}
+                className="flex items-center gap-2 bg-white text-dark border border-primary/20 px-6 py-2.5 rounded-[12px] font-bold shadow-sm hover:bg-offwhite transition-all"
+              >
+                View Profile
+              </button>
+              <button
+                onClick={() => setIsModalOpen(true)}
+                className="flex items-center gap-2 bg-gradient-to-r from-primary to-primary-dark text-white px-6 py-2.5 rounded-[12px] font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all"
+              >
+                <span className="text-lg leading-none mb-0.5">+</span> Submit New Project
+              </button>
+            </div>
           </div>
 
           {data.submissions.length === 0 ? (
@@ -193,6 +208,28 @@ export function StudentDashboard({ profile }: { profile: any }) {
 }
 
 function PublicProfileModal({ profile, data, onClose }: { profile: any, data: any, onClose: () => void }) {
+  const radarData = useMemo(() => {
+    const categoryMap = new Map();
+    data.scores.forEach((s: any) => {
+      const current = categoryMap.get(s.competency) || 0;
+      categoryMap.set(s.competency, Math.max(current, s.percentileScore));
+    });
+    
+    let chartData = Array.from(categoryMap.entries()).map(([subject, A]) => ({ subject, A }));
+    
+    // Fallback if not enough data for radar chart to render properly
+    if (chartData.length < 3) {
+       chartData.push({ subject: 'Problem Solving', A: 0 });
+       chartData.push({ subject: 'System Design', A: 0 });
+       chartData.push({ subject: 'Code Quality', A: 0 });
+       // Unique subjects only
+       const unique = new Map(chartData.map(item => [item.subject, item]));
+       chartData = Array.from(unique.values());
+    }
+    
+    return chartData;
+  }, [data.scores]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-dark/40 backdrop-blur-sm">
       <div className="bg-white rounded-[12px] p-6 w-full max-w-3xl shadow-2xl border border-primary/10 max-h-[90vh] overflow-y-auto">
@@ -217,7 +254,23 @@ function PublicProfileModal({ profile, data, onClose }: { profile: any, data: an
           </div>
           
           <div className="md:col-span-2 space-y-4">
-            <h3 className="font-serif font-bold text-lg text-dark">Verified Skills</h3>
+            <h3 className="font-serif font-bold text-lg text-dark">Skill Breadth</h3>
+            <div className="bg-white border border-primary/10 rounded-[12px] p-4 h-64 shadow-inner flex items-center justify-center">
+              {data.scores.length === 0 ? (
+                 <p className="text-muted text-sm italic">Not enough data to visualize.</p>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
+                    <PolarGrid stroke="#e2e8f0" />
+                    <PolarAngleAxis dataKey="subject" tick={{ fill: '#475569', fontSize: 10, fontWeight: 600 }} />
+                    <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
+                    <Radar name={profile.fullName} dataKey="A" stroke="#028090" fill="#028090" fillOpacity={0.4} />
+                  </RadarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+            
+            <h3 className="font-serif font-bold text-lg text-dark mt-6">Verified Skills</h3>
             {data.scores.length === 0 ? (
               <p className="text-muted text-sm italic">No verified skills available yet.</p>
             ) : (
@@ -237,5 +290,3 @@ function PublicProfileModal({ profile, data, onClose }: { profile: any, data: an
     </div>
   );
 }
-
-import { Code2, X } from 'lucide-react';
